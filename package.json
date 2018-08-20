@@ -1,0 +1,15 @@
+{
+  "name": "servermonitoringnodeapp",
+  "version": "1.0.0",
+  "description": "Server Monitoring Node App",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Reddhi Sekhar Basu",
+  "license": "ISC",
+  "dependencies": {
+    "chokidar": "^2.0.4",
+    "firebase-admin": "^6.0.0"
+  }
+}
