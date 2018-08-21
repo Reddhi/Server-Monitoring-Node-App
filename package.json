@@ -10,7 +10,6 @@
   "license": "ISC",
   "dependencies": {
     "firebase-admin": "^6.0.0",
-    "ws": "^1.0.1",
-    "yoctolib-es2017": "^1.10.31701"
+    "chokidar": "^2.0.4"
   }
 }

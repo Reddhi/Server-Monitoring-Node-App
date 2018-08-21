@@ -1,75 +1,61 @@
-"use strict";
-
-require('yoctolib-es2017/yocto_api.js');
-require('yoctolib-es2017/yocto_temperature.js');
+const chokidar = require('chokidar'); 
+const fs = require('fs');
 const admin = require("firebase-admin");
 const serviceAccount = require("./service-account-key.json");
+const filePath = "/Users/itgadmin/Documents/Wednesday"; //TODO: "/opt/yocto/temperature_history_excess";
 
 let temp;
-let ref;
 
-async function startMonitoring()
-{
-    await YAPI.LogUnhandledPromiseRejections();
-    await YAPI.DisableExceptions();
+var watcher = chokidar.watch(filePath, { 
+    persistent: true,
+    cwd: '.',
+    disableGlobbing: true 
+}); 
 
-    // Setup the API to use the VirtualHub on local machine
-    let errmsg = new YErrorMsg();
-    if(await YAPI.RegisterHub('127.0.0.1', errmsg) != YAPI.SUCCESS) {
-        console.log('Cannot contact VirtualHub on 127.0.0.1: '+errmsg.msg);
-        return;
-    }
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: 'https://server-monitoring-app.firebaseio.com'
+})
+const db = admin.database();
+const ref = db.ref("data");
 
-    // Select specified device, or use first available one
-    let serial = process.argv[process.argv.length-1];
-    if(serial[8] != '-') {
-        // by default use any connected module suitable for the demo
-        let anysensor = YTemperature.FirstTemperature();
-        if(anysensor) {
-            let module = await anysensor.module();
-            serial = await module.get_serialNumber();
-        } else {
-            console.log('No matching sensor connected, check cable !');
-            return;
+watcher.on('change', function(path) { 
+    console.log('File', path, 'has been changed'); 
+    fs.readFile(path, function(err, data){ 
+        let fileContent = data.toString(); 
+        let fileArray = fileContent.split('\n');
+        let newLine = fileArray[fileArray.length-1];
+        console.log("New Addition: "+newLine);
+        let lineArray = newLine.split(' ');
+        let tempIndex, timeIndex;
+        if(lineArray[0] == "Just"){
+            if(lineArray[2] == "@"){
+                timeIndex = 3;
+                tempIndex = 10;
+            } else {
+                timeIndex = 5;
+                tempIndex = 3;
+            }
         }
-    }
-    console.log('Using device '+serial);
-    temp = YTemperature.FindTemperature(serial+".temperature");
-    await initializeFirebase();
-    refresh();
-}
-
-async function initializeFirebase(){
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        databaseURL: 'https://server-monitoring-app.firebaseio.com'
-    })
-    const db = admin.database();
-    ref = db.ref("data");
-}
-
-async function refresh()
-{
-    if (await temp.isOnline()) {
-        let currentdate = new Date();
-        let datetime = currentdate.getDate() + '/'
-                + (currentdate.getMonth()+1)  + '/' 
-                + currentdate.getFullYear() + ' @ '  
-                + (currentdate.getHours()<10? ('0'+currentdate.getHours()) : currentdate.getHours()) + ':'  
-                + (currentdate.getMinutes()<10? ('0'+currentdate.getMinutes()) : currentdate.getMinutes()) + ':' 
-                + (currentdate.getSeconds()<10? ('0'+currentdate.getSeconds()) : currentdate.getSeconds());
-        let currentTemperature = await temp.get_currentValue();
-        let unit = await temp.get_unit();
-        console.log('Temperature : '+currentTemperature + unit+ ' Timestamp : '+datetime);
+        else{
+            for(var i in lineArray){
+                switch(lineArray[i]){
+                    case "C":
+                        tempIndex = i - 1;
+                        break;
+                    case "IST":
+                        timeIndex = i - 4;
+                        break;
+                }
+            }
+        }
+        let datetime = lineArray[timeIndex]+" "+lineArray[timeIndex+1]+" "+lineArray[timeIndex+2]+" "+lineArray[timeIndex+3]+" "+lineArray[timeIndex+4]+" "+lineArray[timeIndex+5];
+        let currentTemperature = Number(lineArray[tempIndex]);
+        console.log('Temperature : '+currentTemperature + ' Timestamp : '+datetime);
         ref.push({ 
             datetime : datetime,  
-            temperature: currentTemperature,
-            unit: unit
+            temperature: currentTemperature
         });      
-    } else {
-        console.log('Module not connected');
-    }
-    setTimeout(refresh, 60000);
-}
-
-startMonitoring();
+        
+    });
+});
