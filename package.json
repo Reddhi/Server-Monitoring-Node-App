@@ -9,7 +9,8 @@
   "author": "Reddhi Sekhar Basu",
   "license": "ISC",
   "dependencies": {
-    "chokidar": "^2.0.4",
-    "firebase-admin": "^6.0.0"
+    "firebase-admin": "^6.0.0",
+    "ws": "^1.0.1",
+    "yoctolib-es2017": "^1.10.31701"
   }
 }
