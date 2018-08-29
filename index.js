@@ -2,22 +2,23 @@ const chokidar = require('chokidar');
 const fs = require('fs');
 const admin = require("firebase-admin");
 const serviceAccount = require("./service-account-key.json");
-const filePath = "/Users/itgadmin/Documents/Wednesday"; //TODO: "/opt/yocto/temperature_history_excess";
+let filePath = "/opt/yocto/temperature_history_excess";
 
-let temp;
-
-var watcher = chokidar.watch(filePath, { 
+const watcher = chokidar.watch(filePath, { 
     persistent: true,
     cwd: '.',
     disableGlobbing: true 
 }); 
 
+
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     databaseURL: 'https://server-monitoring-app.firebaseio.com'
-})
+});
+
 const db = admin.database();
 const ref = db.ref("data");
+
 
 watcher.on('change', function(path) { 
     console.log('File', path, 'has been changed'); 
@@ -55,7 +56,21 @@ watcher.on('change', function(path) {
         ref.push({ 
             datetime : datetime,  
             temperature: currentTemperature
-        });      
-        
+        }); 
+        dbMaintenance();
     });
+});
+
+async function dbMaintenance(){
+    //TODO: Add code to delete old data from db
+}
+
+let filePathRef = db.ref('/constants/filePath');
+filePathRef.on('value', function(snapshot) {
+    console.log("FilePath changed.");
+    console.log("Unwatching the old path: "+filePath);
+    watcher.unwatch(filePath);
+    filePath = snapshot.val();
+    watcher.add(filePath);
+    console.log("Watching the new path: "+filePath);
 });
