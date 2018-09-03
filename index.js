@@ -28,30 +28,39 @@ watcher.on('change', function(path) {
         let newLine = fileArray[fileArray.length-1];
         console.log("New Addition: "+newLine);
         let lineArray = newLine.split(' ');
-        let tempIndex, timeIndex;
-        if(lineArray[0] == "Just"){
-            if(lineArray[2] == "@"){
-                timeIndex = 3;
-                tempIndex = 10;
-            } else {
-                timeIndex = 5;
-                tempIndex = 3;
-            }
-        }
-        else{
-            for(var i in lineArray){
-                switch(lineArray[i]){
-                    case "C":
-                        tempIndex = i - 1;
-                        break;
-                    case "IST":
-                        timeIndex = i - 4;
-                        break;
+        let tempIndex, timeIndex, datetime, currentTemperature;
+        if(newLine == null || newLine == ""){
+            var d = new Date();
+            const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            datetime = days[d.getDay()]+" "+months[d.getMonth()]+" "+d.getDate()+" "+d.getHours()+":"+d.getMinutes()+":"+d.getSeconds()+" IST "+d.getFullYear(); 
+            currentTemperature = -273;
+        } else {
+            if(lineArray[0] == "Just"){
+                if(lineArray[2] == "@"){
+                    timeIndex = 3;
+                    tempIndex = 10;
+                } else {
+                    timeIndex = 5;
+                    tempIndex = 3;
                 }
             }
+            else{
+                for(var i in lineArray){
+                    switch(lineArray[i]){
+                        case "C":
+                            tempIndex = i - 1;
+                            break;
+                        case "IST":
+                            timeIndex = i - 4;
+                            break;
+                    }
+                }
+            }
+            datetime = lineArray[timeIndex]+" "+lineArray[timeIndex+1]+" "+lineArray[timeIndex+2]+" "+lineArray[timeIndex+3]+" "+lineArray[timeIndex+4]+" "+lineArray[timeIndex+5];
+            currentTemperature = Number(lineArray[tempIndex]);
         }
-        let datetime = lineArray[timeIndex]+" "+lineArray[timeIndex+1]+" "+lineArray[timeIndex+2]+" "+lineArray[timeIndex+3]+" "+lineArray[timeIndex+4]+" "+lineArray[timeIndex+5];
-        let currentTemperature = Number(lineArray[tempIndex]);
+        
         console.log('Temperature : '+currentTemperature + ' Timestamp : '+datetime);
         ref.push({ 
             datetime : datetime,  
