@@ -1,85 +1,112 @@
-const chokidar = require('chokidar'); 
-const fs = require('fs');
+"use strict";
+
+require('yoctolib-es2017/yocto_api.js');
+require('yoctolib-es2017/yocto_temperature.js');
+require('yoctolib-es2017/yocto_humidity.js');
+require('yoctolib-es2017/yocto_pressure.js');
 const admin = require("firebase-admin");
 const serviceAccount = require("./service-account-key.json");
-let filePath = "/opt/yocto/temperature_history_excess";
 
-const watcher = chokidar.watch(filePath, { 
-    persistent: true,
-    cwd: '.',
-    disableGlobbing: true 
-}); 
+let temp, hum, pres;
+let dbRef, errRef;
 
+async function startMonitoring()
+{
+    await YAPI.LogUnhandledPromiseRejections();
+    await YAPI.DisableExceptions();
+    await initializeFirebase();
+    // Setup the API to use the VirtualHub on local machine
+    let errmsg = new YErrorMsg();
+    if(await YAPI.RegisterHub('127.0.0.1', errmsg) != YAPI.SUCCESS) {
+        let msg = 'Cannot contact VirtualHub on 127.0.0.1: '+errmsg.msg;
+        let datetime = await getDateTime();
+        console.log(msg);
+        errRef.push({ 
+            message : msg,
+            datetime : datetime
+        });
+        return;
+    }
 
-admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: 'https://server-monitoring-app.firebaseio.com'
-});
-
-const db = admin.database();
-const ref = db.ref("data");
-
-
-watcher.on('change', function(path) { 
-    console.log('File', path, 'has been changed'); 
-    fs.readFile(path, function(err, data){ 
-        let fileContent = data.toString(); 
-        let fileArray = fileContent.split('\n');
-        let newLine = fileArray[fileArray.length-1];
-        console.log("New Addition: "+newLine);
-        let lineArray = newLine.split(' ');
-        let tempIndex, timeIndex, datetime, currentTemperature;
-        if(newLine == null || newLine == ""){
-            var d = new Date();
-            const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-            datetime = days[d.getDay()]+" "+months[d.getMonth()]+" "+d.getDate()+" "+d.getHours()+":"+d.getMinutes()+":"+d.getSeconds()+" IST "+d.getFullYear(); 
-            currentTemperature = -273;
+    // Select specified device, or use first available one
+    let serial = process.argv[process.argv.length-1];
+    if(serial[8] != '-') {
+        // by default use any connected module suitable for the demo
+        let anysensor = YTemperature.FirstTemperature();
+        if(anysensor) {
+            let module = await anysensor.module();
+            serial = await module.get_serialNumber();
         } else {
-            if(lineArray[0] == "Just"){
-                if(lineArray[2] == "@"){
-                    timeIndex = 3;
-                    tempIndex = 10;
-                } else {
-                    timeIndex = 5;
-                    tempIndex = 3;
-                }
-            }
-            else{
-                for(var i in lineArray){
-                    switch(lineArray[i]){
-                        case "C":
-                            tempIndex = i - 1;
-                            break;
-                        case "IST":
-                            timeIndex = i - 4;
-                            break;
-                    }
-                }
-            }
-            datetime = lineArray[timeIndex]+" "+lineArray[timeIndex+1]+" "+lineArray[timeIndex+2]+" "+lineArray[timeIndex+3]+" "+lineArray[timeIndex+4]+" "+lineArray[timeIndex+5];
-            currentTemperature = Number(lineArray[tempIndex]);
+            let msg = 'No matching sensor connected, check cable !';
+            let datetime = await getDateTime();
+            console.log(msg);
+            errRef.push({ 
+                message : msg,
+                datetime : datetime
+            });
+            return;
         }
-        
-        console.log('Temperature : '+currentTemperature + ' Timestamp : '+datetime);
-        ref.push({ 
-            datetime : datetime,  
-            temperature: currentTemperature
-        }); 
-        dbMaintenance();
-    });
-});
-
-async function dbMaintenance(){
-    //TODO: Add code to delete old data from db
+    }
+    console.log('Using device '+serial);
+    temp = YTemperature.FindTemperature(serial+".temperature");
+    hum  = YHumidity.FindHumidity(serial+".humidity");
+    pres = YPressure.FindPressure(serial+".pressure");
+    refresh();
 }
 
-let filePathRef = db.ref('/constants/filePath');
-filePathRef.on('value', function(snapshot) {
-    console.log("FilePath changed.");
-    console.log("Unwatching the old path: "+filePath);
-    watcher.unwatch(filePath);
-    filePath = snapshot.val();
-    watcher.add(filePath);
-    console.log("Watching the new path: "+filePath);
-});
+async function initializeFirebase(){
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        databaseURL: 'https://server-monitoring-app.firebaseio.com'
+    })
+    const db = admin.database();
+    dbRef = db.ref("data");
+    errRef = db.ref("error-log");
+}
+
+async function refresh()
+{
+    if (await temp.isOnline()) {
+        let datetime = await getDateTime();
+        let currentTemperature = await temp.get_currentValue();
+        let currentPressure = await pres.get_currentValue();
+        let currentHumidity = await hum.get_currentValue();
+        let tUnit = await temp.get_unit();
+        let hUnit = await hum.get_unit();
+        let pUnit = await pres.get_unit();
+        console.log('Temperature : '+currentTemperature + tUnit+ ' Timestamp : '+datetime);
+        console.log('Pressure : '+currentPressure + pUnit+ ' Timestamp : '+datetime);
+        console.log('Humidity : '+currentHumidity + hUnit+ ' Timestamp : '+datetime);
+        dbRef.push({ 
+            datetime : datetime,  
+            temperature: currentTemperature,
+            pressure: currentPressure,
+            humidity: currentHumidity
+        });      
+    } else {
+        let msg = 'Module not connected';
+        let datetime = await getDateTime();
+        console.log(msg);
+        errRef.push({ 
+            message : msg,
+            datetime : datetime
+        });
+    }
+    setTimeout(refresh, 60000);
+}
+
+async function getDateTime(){
+    let currentdate = new Date();
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let datetime = (currentdate.getHours()<10 ? ('0'+currentdate.getHours()) : currentdate.getHours()) + ':'  
+                + (currentdate.getMinutes()<10 ? ('0'+currentdate.getMinutes()) : currentdate.getMinutes()) + ':' 
+                + (currentdate.getSeconds()<10 ? ('0'+currentdate.getSeconds()) : currentdate.getSeconds()) + ' '
+                + days[currentdate.getDay()]+" "+
+                + currentdate.getDate() + '/'
+                + (currentdate.getMonth()+1)  + '/' 
+                + currentdate.getFullYear();
+    return datetime;
+}
+
+startMonitoring();
