@@ -106,6 +106,18 @@ async function getDateTime(){
                 + currentdate.getDate() + '/'
                 + (currentdate.getMonth()+1)  + '/' 
                 + currentdate.getFullYear();
+    if(currentdate.getHours()===0 && (currentdate.getMinutes()===0 || currentdate.getMinutes()===1)){
+        dbRef.set(null);
+        msg = "Data Reset Complete";
+        console.log(msg);
+        errRef.push({ 
+            message : msg,
+            datetime : datetime
+        });
+    }
+    if(currentdate.getDate()===1 && currentdate.getHours()===0 && (currentdate.getMinutes()===0 || currentdate.getMinutes()===1)){
+        errRef.set(null);
+    }
     return datetime;
 }
 
